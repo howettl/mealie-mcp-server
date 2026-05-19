@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from utils import format_api_params
@@ -214,10 +215,17 @@ class RecipeMixin:
         if not filename:
             raise ValueError("Filename cannot be empty")
 
-        files = {"image": (filename, image_data)}
+        extension = os.path.splitext(filename)[1].lstrip(".").lower()
+        if not extension:
+            raise ValueError(
+                f"Unable to determine file extension from filename: {filename}"
+            )
 
-        logger.info({"message": "Uploading recipe image", "slug": slug, "filename": filename})
-        return self._handle_request("PUT", f"/api/recipes/{slug}/image", files=files)
+        files = {"image": (filename, image_data)}
+        data = {"extension": extension}
+
+        logger.info({"message": "Uploading recipe image", "slug": slug, "filename": filename, "extension": extension})
+        return self._handle_request("PUT", f"/api/recipes/{slug}/image", files=files, data=data)
 
     def upload_recipe_asset(self, slug: str, asset_data: bytes, filename: str) -> Dict[str, Any]:
         """Upload a recipe asset file (multipart upload)

@@ -152,8 +152,12 @@ class MealieClient:
                     "error_detail": error_detail,
                 }
             )
+            try:
+                request_content = e.request.content
+            except Exception:
+                request_content = "<streaming body, not buffered>"
             logger.debug(
-                {"message": "Failed Request body", "content": e.request.content}
+                {"message": "Failed Request body", "content": request_content}
             )
             raise MealieApiError(status_code, error_msg, e.response.text) from e
 
