@@ -116,6 +116,52 @@ class RecipeMixin:
         logger.info({"message": "Creating new recipe", "name": name})
         return self._handle_request("POST", "/api/recipes", json={"name": name})
 
+    def create_recipe_from_url(self, url: str, include_tags: bool = False) -> str:
+        """Create a new recipe by scraping a URL.
+
+        Uses Mealie's built-in scraper, the same code path as the web UI's
+        "Import from URL" / HTML import. This populates description, the
+        original URL ("Original URL" button), structured ingredients (which
+        enables recipe scaling), times, yield, and image.
+
+        Args:
+            url: The recipe URL to scrape.
+            include_tags: If True, import tags from the source page.
+
+        Returns:
+            Slug of the newly created recipe
+        """
+        if not url:
+            raise ValueError("URL cannot be empty")
+
+        payload = {"url": url, "includeTags": include_tags}
+        logger.info({"message": "Scraping recipe from URL", "url": url})
+        return self._handle_request(
+            "POST", "/api/recipes/create/url", json=payload,
+        )
+
+    def create_recipe_from_html(self, data: str, include_tags: bool = False) -> str:
+        """Create a new recipe from raw HTML or a schema.org Recipe JSON string.
+
+        Same scraper as create_recipe_from_url, but for content that isn't at a
+        public URL (e.g. pasted HTML or JSON-LD).
+
+        Args:
+            data: Raw HTML or a schema.org Recipe JSON string.
+            include_tags: If True, import tags from the source data.
+
+        Returns:
+            Slug of the newly created recipe
+        """
+        if not data:
+            raise ValueError("Data cannot be empty")
+
+        payload = {"data": data, "includeTags": include_tags}
+        logger.info({"message": "Scraping recipe from HTML/JSON"})
+        return self._handle_request(
+            "POST", "/api/recipes/create/html-or-json", json=payload,
+        )
+
     def patch_recipe(self, slug: str, recipe_data: Dict[str, Any]) -> Dict[str, Any]:
         """Partially update a recipe (only updates provided fields)
 
@@ -249,6 +295,66 @@ class RecipeMixin:
 
         logger.info({"message": "Uploading recipe asset", "slug": slug, "filename": filename})
         return self._handle_request("POST", f"/api/recipes/{slug}/assets", files=files)
+
+    def ensure_food(self, name: str) -> Dict[str, Any]:
+        """Return the food with this name, creating it if it doesn't exist."""
+        if not name:
+            raise ValueError("Food name cannot be empty")
+
+        existing = self._handle_request(
+            "GET", "/api/foods", params={"search": name, "perPage": 50},
+        )
+        for item in existing.get("items", []):
+            if item.get("name", "").lower() == name.lower():
+                return item
+
+        logger.info({"message": "Creating new food", "name": name})
+        return self._handle_request("POST", "/api/foods", json={"name": name})
+
+    def ensure_unit(self, name: str) -> Dict[str, Any]:
+        """Return the unit with this name, creating it if it doesn't exist."""
+        if not name:
+            raise ValueError("Unit name cannot be empty")
+
+        existing = self._handle_request(
+            "GET", "/api/units", params={"search": name, "perPage": 50},
+        )
+        for item in existing.get("items", []):
+            if item.get("name", "").lower() == name.lower():
+                return item
+
+        logger.info({"message": "Creating new unit", "name": name})
+        return self._handle_request("POST", "/api/units", json={"name": name})
+
+    def parse_ingredients(
+        self,
+        ingredients: List[str],
+        parser: str = "nlp",
+    ) -> List[Dict[str, Any]]:
+        """Parse free-form ingredient strings into structured ingredients.
+
+        Calls Mealie's NLP ingredient parser. Each response item has shape
+        {input, confidence, ingredient}, where `ingredient` has the structured
+        quantity / unit / food / note / display fields that Mealie's
+        recipe-scaling feature needs.
+
+        Args:
+            ingredients: List of free-form ingredient strings.
+            parser: "nlp" (default), "brute", or "openai".
+
+        Returns:
+            List of ParsedIngredient dicts.
+        """
+        if not ingredients:
+            return []
+
+        payload = {"parser": parser, "ingredients": ingredients}
+        logger.info(
+            {"message": "Parsing ingredients", "count": len(ingredients), "parser": parser}
+        )
+        return self._handle_request(
+            "POST", "/api/parser/ingredients", json=payload,
+        )
 
     def delete_recipe(self, slug: str) -> Dict[str, Any]:
         """Delete a recipe
